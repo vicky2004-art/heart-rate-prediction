@@ -2,96 +2,103 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from PIL import Image  # Import PIL to load the image
 
 # --- 1. PAGE CONFIGURATION ---
+# Attempt to load the custom icon image
+try:
+    # REPLACE 'icon.png' with the actual name of your image file if different
+    icon_image = Image.open("icon.png") 
+    page_icon_config = icon_image
+except FileNotFoundError:
+    # Fallback to an emoji if the image file isn't found
+    page_icon_config = "icon.png"
+
 st.set_page_config(
     page_title="Cardio AI Predictor", 
-    page_icon="❤️", 
+    page_icon=page_icon_config, 
     layout="centered"
 )
 
 # --- 2. TRAIN MODEL (Background Process) ---
 @st.cache_resource
 def build_model():
-    # Synthetic dataset: Age, Duration(mins), Intensity(1-10) -> Heart Rate
-    data = {
-        'Age':             [20, 25, 30, 35, 40, 45, 50, 55, 60, 22, 28, 48, 19, 65, 33],
-        'Duration_Mins':   [10, 20, 30, 15, 45, 20, 60, 10, 30, 25, 40, 15, 10, 20, 50],
-        'Intensity_Level': [3,  7,  8,  4,  6,  5,  5,  3,  6,  9,  8,  4,  2,  4,  7],
-        # Target Variable: BPM (Beats Per Minute)
-        'Heart_Rate_BPM':  [95, 145, 160, 110, 135, 125, 130, 100, 128, 175, 165, 115, 85, 105, 155]
-    }
-    
-    df = pd.DataFrame(data)
-    X = df[['Age', 'Duration_Mins', 'Intensity_Level']]
-    y = df['Heart_Rate_BPM']
-    
-    regressor = LinearRegression()
-    regressor.fit(X, y)
-    
-    return regressor
+    try:
+        # Load the uploaded dataset
+        df = pd.read_csv('frequency_domain_features_test.csv')
+        
+        # Clean data: Remove ID column if it exists
+        if 'uuid' in df.columns:
+            df = df.drop(columns=['uuid'])
+            
+        # Handle missing values
+        df = df.fillna(df.mean())
 
-model = build_model()
+        # Generate synthetic target 'Heart_Rate' if missing (for demonstration)
+        if 'Heart_Rate' not in df.columns:
+            np.random.seed(42) 
+            df['Heart_Rate'] = np.random.randint(60, 100, size=len(df))
 
-# --- 3. UI LAYOUT ---
-st.title("❤️ Exercise Heart Rate Predictor")
-st.markdown("Use this AI tool to estimate your heart rate (BPM) based on your workout details.")
+        # Select features
+        feature_cols = ['VLF', 'LF', 'HF']
+        
+        # Prepare X and y
+        X = df[feature_cols]
+        y = df['Heart_Rate']
 
-# Disclaimer
-st.info("ℹ️ **Note:** This model assumes a healthy individual. Consult a doctor for medical advice.")
+        # Train Model
+        model = LinearRegression()
+        model.fit(X, y)
+        
+        return model, feature_cols
+        
+    except Exception as e:
+        st.error(f"Error loading or training on dataset: {e}")
+        return None, []
 
-st.write("---")
+# Load the model
+model, feature_names = build_model()
 
-# Input Section
-col1, col2 = st.columns(2)
+# --- 3. USER INTERFACE ---
+st.title("❤️ Heart Rate Predictor (HRV)")
+st.write("Enter Frequency Domain Features to predict Heart Rate.")
 
-with col1:
-    st.subheader("Your Profile")
-    age = st.slider("Select Age", 15, 80, 25)
+if model:
+    # Create columns for input fields
+    col1, col2, col3 = st.columns(3)
     
-with col2:
-    st.subheader("Workout Details")
-    duration = st.number_input("Duration (minutes)", min_value=5, max_value=120, value=30)
-    intensity = st.slider("Intensity Level (1=Relaxed, 10=Max Effort)", 1, 10, 5)
+    # Input: VLF
+    with col1:
+        vlf_val = st.number_input("VLF", min_value=0.0, value=1000.0, help="Very Low Frequency component")
 
-# --- 4. PREDICTION ENGINE ---
-if st.button("Calculate Heart Rate", type="primary"):
-    # Prepare input for the model
-    input_features = np.array([[age, duration, intensity]])
-    
-    # Predict
-    prediction = model.predict(input_features)[0]
-    result_bpm = int(prediction)
-    
-    # Calculate Max Heart Rate (Standard Formula: 220 - Age)
-    max_hr = 220 - age
-    
-    st.write("---")
-    st.subheader("Results")
-    
-    # Display Metrics
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Estimated BPM", f"{result_bpm} ❤️")
-    m2.metric("Max Safe HR", f"{max_hr} BPM")
-    
-    # Determine Zone
-    percentage = (result_bpm / max_hr) * 100
-    
-    if percentage < 50:
-        st.success(f"Zone: **Warm Up / Recovery** ({percentage:.1f}%)")
-    elif 50 <= percentage < 70:
-        st.info(f"Zone: **Fat Burn** ({percentage:.1f}%)")
-    elif 70 <= percentage < 85:
-        st.warning(f"Zone: **Cardio Endurance** ({percentage:.1f}%)")
-    else:
-        st.error(f"Zone: **Peak Performance / Anaerobic** ({percentage:.1f}%)")
-        if result_bpm > max_hr:
-            st.error("⚠️ **WARNING:** Predicted rate exceeds generic Max Heart Rate!")
+    # Input: LF
+    with col2:
+        lf_val = st.number_input("LF", min_value=0.0, value=500.0, help="Low Frequency component")
+        
+    # Input: HF
+    with col3:
+        hf_val = st.number_input("HF", min_value=0.0, value=20.0, help="High Frequency component")
 
-# --- 5. SIDEBAR INFO ---
-with st.sidebar:
-    st.header("How it works")
-    st.write("We use **Linear Regression** to analyze relationships between:")
-    st.write("1. **Age:** HR typically decreases with age.")
-    st.write("2. **Duration:** Longer workouts drift HR higher.")
-    st.write("3. **Intensity:** The biggest driver of HR.")
+    # --- 4. PREDICTION LOGIC ---
+    if st.button("Calculate Heart Rate", type="primary"):
+        # Prepare input
+        input_features = np.array([[vlf_val, lf_val, hf_val]])
+        
+        # Predict
+        prediction = model.predict(input_features)[0]
+        result_bpm = int(prediction)
+        
+        # Display Results
+        st.write("---")
+        st.subheader("Results")
+        st.metric("Estimated Heart Rate", f"{result_bpm} BPM")
+        
+        if result_bpm < 60:
+            st.info("Status: Resting / Bradycardia range")
+        elif 60 <= result_bpm <= 100:
+            st.success("Status: Normal Resting Heart Rate range")
+        else:
+            st.warning("Status: Elevated / Tachycardia range")
+            
+else:
+    st.warning("Data could not be loaded. Please ensure 'frequency_domain_features_test.csv' is in the app directory.")
