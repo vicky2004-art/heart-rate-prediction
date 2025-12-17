@@ -15,7 +15,7 @@ except FileNotFoundError:
     page_icon_config = "icon.png"
 
 st.set_page_config(
-    page_title="Cardio AI Prediction", 
+    page_title="Cardio AI Predictor", 
     page_icon=page_icon_config, 
     layout="centered"
 )
@@ -40,7 +40,7 @@ def build_model():
             df['Heart_Rate'] = np.random.randint(60, 100, size=len(df))
 
         # Select features
-        feature_cols = ['Very Low Frequency', 'Low Frequency', 'High Frequency']
+        feature_cols = ['VLF', 'LF', 'HF']
         
         # Prepare X and y
         X = df[feature_cols]
@@ -69,15 +69,15 @@ if model:
     
     # Input: VLF
     with col1:
-        vlf_val = st.number_input("Very Low Frequency", min_value=0.0, value=1000.0, help="Very Low Frequency component")
+        vlf_val = st.number_input("VLF", min_value=0.0, value=1000.0, help="Very Low Frequency component")
 
     # Input: LF
     with col2:
-        lf_val = st.number_input("Low Frequency", min_value=0.0, value=500.0, help="Low Frequency component")
+        lf_val = st.number_input("LF", min_value=0.0, value=500.0, help="Low Frequency component")
         
     # Input: HF
     with col3:
-        hf_val = st.number_input("High Frequency", min_value=0.0, value=20.0, help="High Frequency component")
+        hf_val = st.number_input("HF", min_value=0.0, value=20.0, help="High Frequency component")
 
     # --- 4. PREDICTION LOGIC ---
     if st.button("Calculate Heart Rate", type="primary"):
@@ -101,5 +101,4 @@ if model:
             st.warning("Status: Elevated / Tachycardia range")
             
 else:
-
     st.warning("Data could not be loaded. Please ensure 'frequency_domain_features_test.csv' is in the app directory.")
